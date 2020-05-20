@@ -6,13 +6,12 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 //
-// TODO - Add your authorship information here
 [assembly: AssemblyTitle("ASCOM.MyMinEq.Telescope")]
 [assembly: AssemblyDescription("ASCOM Telescope driver for MyMinEq")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("The ASCOM Initiative")]
+[assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("ASCOM Telescope driver for MyMinEq")]
-[assembly: AssemblyCopyright("Copyright © $year$ The ASCOM Initiative")]
+[assembly: AssemblyCopyright("")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -34,6 +33,5 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Revision and Build Numbers 
 // by using the '*' as shown below:
 //
-// TODO - Set your driver's version here
-[assembly: AssemblyVersion("6.4.0.0")]
-[assembly: AssemblyFileVersion("6.4.0.0")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
