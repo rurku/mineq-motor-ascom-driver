@@ -39,13 +39,28 @@ namespace ASCOM.MyMinEq
         internal static string comPortDefault = "COM1";
         internal static string traceStateProfileName = "Trace Level";
         internal static string traceStateDefault = "false";
+        internal static string rightAsensionProfileName = "Right Ascension";
+        internal static string rightAscensionDefault = "0";
+        internal static string declinationProfileName = "Declination";
+        internal static string declinationDefault = "0";
+        internal static string pwmLowProfileName = "PWM 0.5x";
+        internal static string pwmLowDefault = "0";
+        internal static string pwmHighProfileName = "PWM 1.5x";
+        internal static string pwmHighDefault = "0";
 
         internal static string comPort; // Variables to hold the currrent device configuration
+        internal static double rightAscension;
+        internal static double declination;
+        internal static int pwmLow;
+        internal static int pwmHigh;
 
         /// <summary>
         /// Private variable to hold the connected state
         /// </summary>
         private bool connectedState;
+
+        // Making it static because PHD2 does not call Connect(false) on disconnect and then port is already in use when it tries to reconnect. By using a static instance of Serial it can use the same already connected instance when reconnecting.
+        private static Serial serial = new Serial();
 
         /// <summary>
         /// Private variable to hold an ASCOM Utilities object
@@ -69,14 +84,21 @@ namespace ASCOM.MyMinEq
         public Telescope()
         {
             tl = new TraceLogger("", "MyMinEq");
+            utilities = new Util(); //Initialise util object
+            astroUtilities = new AstroUtils(); // Initialise astro utilities object
+
             ReadProfile(); // Read device configuration from the ASCOM Profile store
+
+            if (!serial.Connected)
+            {
+                serial.PortName = comPort;
+                serial.Speed = SerialSpeed.ps9600;
+            }
+
 
             tl.LogMessage("Telescope", "Starting initialisation");
 
-            connectedState = false; // Initialise connected to false
-            utilities = new Util(); //Initialise util object
-            astroUtilities = new AstroUtils(); // Initialise astro utilities object
-            //TODO: Implement your additional construction here
+            connectedState = serial.Connected; // Initialise connected from serial state
 
             tl.LogMessage("Telescope", "Completed initialisation");
         }
@@ -162,17 +184,19 @@ namespace ASCOM.MyMinEq
             }
             set
             {
-                tl.LogMessage("Connected", "Set {0}", value);
+                LogMessage("Connected", "Set {0}", value);
                 if (value == IsConnected)
                     return;
 
                 if (value)
                 {
+                    serial.Connected = true;
                     connectedState = true;
                     LogMessage("Connected Set", "Connecting to port {0}", comPort);
                 }
                 else
                 {
+                    serial.Connected = false;
                     connectedState = false;
                     LogMessage("Connected Set", "Disconnecting from port {0}", comPort);
                 }
@@ -234,6 +258,152 @@ namespace ASCOM.MyMinEq
 
         #endregion
 
+        #region Properties and methods for guiding
+
+
+        public double RightAscension
+        {
+            get
+            {
+                tl.LogMessage("RightAscension", "Get - " + utilities.HoursToHMS(rightAscension));
+                return rightAscension;
+            }
+        }
+
+        public double Declination
+        {
+            get
+            {
+                tl.LogMessage("Declination", "Get - " + utilities.DegreesToDMS(declination));
+                return declination;
+            }
+        }
+
+        public double GuideRateDeclination
+        {
+            get
+            {
+                tl.LogMessage("GuideRateDeclination Get", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("GuideRateDeclination", false);
+            }
+            set
+            {
+                tl.LogMessage("GuideRateDeclination Set", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("GuideRateDeclination", true);
+            }
+        }
+
+        public double GuideRateRightAscension
+        {
+            get
+            {
+                double rate = siderealRate / 2;
+                tl.LogMessage("GuideRateRightAscension Get", $"{rate}");
+                return rate;
+            }
+            set
+            {
+                tl.LogMessage("GuideRateRightAscension Set", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("GuideRateRightAscension", true);
+            }
+        }
+
+        public bool CanPulseGuide
+        {
+            get
+            {
+                tl.LogMessage("CanPulseGuide", "Get - " + true.ToString());
+                return true;
+            }
+        }
+        public bool IsPulseGuiding
+        {
+            get
+            {
+                var result = guideDurationStopwatch.IsRunning && guideDurationStopwatch.ElapsedMilliseconds < guideMilliseconds;
+                tl.LogMessage("IsPulseGuiding Get", result.ToString());
+                return result;
+            }
+        }
+
+        private Stopwatch guideDurationStopwatch = new Stopwatch();
+        private long guideMilliseconds;
+        public void PulseGuide(GuideDirections Direction, int Duration)
+        {
+            tl.LogMessage("PulseGuide", $"{Direction} {Duration}");
+            if (Direction == GuideDirections.guideEast || Direction == GuideDirections.guideWest)
+            {
+                var pwm = Direction == GuideDirections.guideEast ? pwmLow : pwmHigh;
+                serial.Transmit($"o {pwm} {Duration}\r\n");
+                while (serial.ReceiveTerminated("\r\n") != "ack\r\n") ; // wait for ack
+                guideDurationStopwatch.Start();
+                guideMilliseconds = Duration;
+            }
+        }
+
+
+
+        public double RightAscensionRate
+        {
+            get
+            {
+                double rightAscensionRate = 0.0;
+                tl.LogMessage("RightAscensionRate", "Get - " + rightAscensionRate.ToString());
+                return rightAscensionRate;
+            }
+            set
+            {
+                tl.LogMessage("RightAscensionRate Set", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("RightAscensionRate", true);
+            }
+        }
+
+        public bool Tracking
+        {
+            get
+            {
+                bool tracking = true;
+                tl.LogMessage("Tracking", "Get - " + tracking.ToString());
+                return tracking;
+            }
+            set
+            {
+                tl.LogMessage("Tracking Set", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("Tracking", true);
+            }
+        }
+
+        public DriveRates TrackingRate
+        {
+            get
+            {
+                tl.LogMessage("TrackingRate Get", $"{DriveRates.driveSidereal}");
+                return DriveRates.driveSidereal;
+            }
+            set
+            {
+                tl.LogMessage("TrackingRate Set", "Not implemented");
+                throw new ASCOM.PropertyNotImplementedException("TrackingRate", true);
+            }
+        }
+
+        public ITrackingRates TrackingRates
+        {
+            get
+            {
+                ITrackingRates trackingRates = new TrackingRates();
+                tl.LogMessage("TrackingRates", "Get - ");
+                foreach (DriveRates driveRate in trackingRates)
+                {
+                    tl.LogMessage("TrackingRates", "Get - " + driveRate.ToString());
+                }
+                return trackingRates;
+            }
+        }
+        #endregion
+
+        #region Other properties and methods
+
         public void AbortSlew()
         {
             tl.LogMessage("AbortSlew", "Not implemented");
@@ -241,6 +411,29 @@ namespace ASCOM.MyMinEq
         }
 
         public AlignmentModes AlignmentMode => AlignmentModes.algGermanPolar;
+        public bool AtHome
+        {
+            get
+            {
+                tl.LogMessage("AtHome", "Get - " + false.ToString());
+                return false;
+            }
+        }
+
+        public bool AtPark
+        {
+            get
+            {
+                tl.LogMessage("AtPark", "Get - " + false.ToString());
+                return false;
+            }
+        }
+
+        public IAxisRates AxisRates(TelescopeAxes Axis)
+        {
+            tl.LogMessage("AxisRates", "Get - " + Axis.ToString());
+            return new AxisRates(Axis);
+        }
 
         public double Altitude
         {
@@ -267,30 +460,6 @@ namespace ASCOM.MyMinEq
                 tl.LogMessage("ApertureDiameter Get", "Not implemented");
                 throw new ASCOM.PropertyNotImplementedException("ApertureDiameter", false);
             }
-        }
-
-        public bool AtHome
-        {
-            get
-            {
-                tl.LogMessage("AtHome", "Get - " + false.ToString());
-                return false;
-            }
-        }
-
-        public bool AtPark
-        {
-            get
-            {
-                tl.LogMessage("AtPark", "Get - " + false.ToString());
-                return false;
-            }
-        }
-
-        public IAxisRates AxisRates(TelescopeAxes Axis)
-        {
-            tl.LogMessage("AxisRates", "Get - " + Axis.ToString());
-            return new AxisRates(Axis);
         }
 
         public double Azimuth
@@ -332,14 +501,7 @@ namespace ASCOM.MyMinEq
             }
         }
 
-        public bool CanPulseGuide
-        {
-            get
-            {
-                tl.LogMessage("CanPulseGuide", "Get - " + true.ToString());
-                return true;
-            }
-        }
+
 
         public bool CanSetDeclinationRate
         {
@@ -458,23 +620,13 @@ namespace ASCOM.MyMinEq
             }
         }
 
-        public double Declination
-        {
-            get
-            {
-                double declination = 0.0;
-                tl.LogMessage("Declination", "Get - " + utilities.DegreesToDMS(declination, ":", ":"));
-                return declination;
-            }
-        }
-
         public double DeclinationRate
         {
             get
             {
-                double declination = 0.0;
-                tl.LogMessage("DeclinationRate", "Get - " + declination.ToString());
-                return declination;
+                double declinationRate = 0.0;
+                tl.LogMessage("DeclinationRate", "Get - " + declinationRate.ToString());
+                return declinationRate;
             }
             set
             {
@@ -528,43 +680,7 @@ namespace ASCOM.MyMinEq
             }
         }
 
-        public double GuideRateDeclination
-        {
-            get
-            {
-                tl.LogMessage("GuideRateDeclination Get", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("GuideRateDeclination", false);
-            }
-            set
-            {
-                tl.LogMessage("GuideRateDeclination Set", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("GuideRateDeclination", true);
-            }
-        }
 
-        public double GuideRateRightAscension
-        {
-            get
-            {
-                double rate = siderealRate / 2;
-                tl.LogMessage("GuideRateRightAscension Get", $"{rate}");
-                return rate;
-            }
-            set
-            {
-                tl.LogMessage("GuideRateRightAscension Set", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("GuideRateRightAscension", true);
-            }
-        }
-
-        public bool IsPulseGuiding
-        {
-            get
-            {
-                tl.LogMessage("IsPulseGuiding Get", "false");
-                return false;
-            }
-        }
 
         public void MoveAxis(TelescopeAxes Axis, double Rate)
         {
@@ -576,38 +692,6 @@ namespace ASCOM.MyMinEq
         {
             tl.LogMessage("Park", "Not implemented");
             throw new ASCOM.MethodNotImplementedException("Park");
-        }
-
-        public void PulseGuide(GuideDirections Direction, int Duration)
-        {
-            tl.LogMessage("PulseGuide", $"{Direction} {Duration}");
-            // TODO: pulse guide!
-            Thread.Sleep(Duration);
-        }
-
-        public double RightAscension
-        {
-            get
-            {
-                double rightAscension = 0.0;
-                tl.LogMessage("RightAscension", "Get - " + utilities.HoursToHMS(rightAscension));
-                return rightAscension;
-            }
-        }
-
-        public double RightAscensionRate
-        {
-            get
-            {
-                double rightAscensionRate = 0.0;
-                tl.LogMessage("RightAscensionRate", "Get - " + rightAscensionRate.ToString());
-                return rightAscensionRate;
-            }
-            set
-            {
-                tl.LogMessage("RightAscensionRate Set", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("RightAscensionRate", true);
-            }
         }
 
         public void SetPark()
@@ -803,49 +887,6 @@ namespace ASCOM.MyMinEq
             }
         }
 
-        public bool Tracking
-        {
-            get
-            {
-                bool tracking = true;
-                tl.LogMessage("Tracking", "Get - " + tracking.ToString());
-                return tracking;
-            }
-            set
-            {
-                tl.LogMessage("Tracking Set", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("Tracking", true);
-            }
-        }
-
-        public DriveRates TrackingRate
-        {
-            get
-            {
-                tl.LogMessage("TrackingRate Get", $"{DriveRates.driveSidereal}");
-                return DriveRates.driveSidereal;
-            }
-            set
-            {
-                tl.LogMessage("TrackingRate Set", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("TrackingRate", true);
-            }
-        }
-
-        public ITrackingRates TrackingRates
-        {
-            get
-            {
-                ITrackingRates trackingRates = new TrackingRates();
-                tl.LogMessage("TrackingRates", "Get - ");
-                foreach (DriveRates driveRate in trackingRates)
-                {
-                    tl.LogMessage("TrackingRates", "Get - " + driveRate.ToString());
-                }
-                return trackingRates;
-            }
-        }
-
         public DateTime UTCDate
         {
             get
@@ -866,6 +907,8 @@ namespace ASCOM.MyMinEq
             tl.LogMessage("Unpark", "Not implemented");
             throw new ASCOM.MethodNotImplementedException("Unpark");
         }
+        #endregion
+
 
         #region Private properties and methods
         // here are some useful properties and methods that can be used as required
@@ -983,6 +1026,10 @@ namespace ASCOM.MyMinEq
                 driverProfile.DeviceType = "Telescope";
                 tl.Enabled = Convert.ToBoolean(driverProfile.GetValue(driverID, traceStateProfileName, string.Empty, traceStateDefault));
                 comPort = driverProfile.GetValue(driverID, comPortProfileName, string.Empty, comPortDefault);
+                rightAscension = utilities.HMSToHours(driverProfile.GetValue(driverID, rightAsensionProfileName, string.Empty, rightAscensionDefault));
+                declination = utilities.DMSToDegrees(driverProfile.GetValue(driverID, declinationProfileName, string.Empty, rightAscensionDefault));
+                pwmLow = int.Parse(driverProfile.GetValue(driverID, pwmLowProfileName, string.Empty, pwmLowDefault));
+                pwmHigh = int.Parse(driverProfile.GetValue(driverID, pwmHighProfileName, string.Empty, pwmHighDefault));
             }
         }
 
@@ -996,6 +1043,10 @@ namespace ASCOM.MyMinEq
                 driverProfile.DeviceType = "Telescope";
                 driverProfile.WriteValue(driverID, traceStateProfileName, tl.Enabled.ToString());
                 driverProfile.WriteValue(driverID, comPortProfileName, comPort.ToString());
+                driverProfile.WriteValue(driverID, rightAsensionProfileName, utilities.HoursToHMS(rightAscension));
+                driverProfile.WriteValue(driverID, declinationProfileName, utilities.DegreesToDMS(declination));
+                driverProfile.WriteValue(driverID, pwmLowProfileName, pwmLow.ToString());
+                driverProfile.WriteValue(driverID, pwmHighProfileName, pwmHigh.ToString());
             }
         }
 
