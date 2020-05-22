@@ -335,7 +335,17 @@ namespace ASCOM.MyMinEq
             {
                 var pwm = Direction == GuideDirections.guideEast ? pwmLow : pwmHigh;
                 serial.Transmit($"o {pwm} {Duration}\r\n");
-                while (serial.ReceiveTerminated("\r\n") != "ack\r\n") ; // wait for ack
+                var ackStopwatch = new Stopwatch();
+                ackStopwatch.Start();
+                bool isAck = false;
+                while (!isAck && ackStopwatch.ElapsedMilliseconds < 1000)
+                {
+                    isAck = serial.ReceiveTerminated("\r\n") == "ack\r\n";
+                };
+                if (!isAck)
+                {
+                    throw new DriverException("Did not receive ACK");
+                }
                 guideDurationStopwatch.Start();
                 guideMilliseconds = Duration;
             }
@@ -836,8 +846,8 @@ namespace ASCOM.MyMinEq
         {
             get
             {
-                tl.LogMessage("Slewing Get", "Not implemented");
-                throw new ASCOM.PropertyNotImplementedException("Slewing", false);
+                tl.LogMessage("Slewing Get", "false");
+                return false;
             }
         }
 
