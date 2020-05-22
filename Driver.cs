@@ -24,7 +24,7 @@ namespace ASCOM.MyMinEq
     [ClassInterface(ClassInterfaceType.None)]
     public class Telescope : ITelescopeV3
     {
-        private const double siderealRate = 15.041 / 60 / 60; // deg per second
+        private const double siderealRate = 15.041; // arcsec per second
         /// <summary>
         /// ASCOM DeviceID (COM ProgID) for this driver.
         /// The DeviceID is used by ASCOM applications to load the driver at runtime.
@@ -33,26 +33,22 @@ namespace ASCOM.MyMinEq
         /// <summary>
         /// Driver description that displays in the ASCOM Chooser.
         /// </summary>
-        private static string driverDescription = "ASCOM Telescope Driver for My Min-EQ mount with RA motor and .";
+        private static string driverDescription = "Min-EQ mount with augmented RA motor";
 
         internal static string comPortProfileName = "COM Port"; // Constants used for Profile persistence
         internal static string comPortDefault = "COM1";
         internal static string traceStateProfileName = "Trace Level";
         internal static string traceStateDefault = "false";
-        internal static string rightAsensionProfileName = "Right Ascension";
-        internal static string rightAscensionDefault = "0";
         internal static string declinationProfileName = "Declination";
         internal static string declinationDefault = "0";
-        internal static string pwmLowProfileName = "PWM 0.5x";
-        internal static string pwmLowDefault = "0";
-        internal static string pwmHighProfileName = "PWM 1.5x";
-        internal static string pwmHighDefault = "0";
+
+        internal static string guideRateProfileName = "Guide Rate (arcsec / s)";
+        internal static string guideRateDefault = (siderealRate / 2).ToString("F4", CultureInfo.InvariantCulture);
+
 
         internal static string comPort; // Variables to hold the currrent device configuration
-        internal static double rightAscension;
-        internal static double declination;
-        internal static int pwmLow;
-        internal static int pwmHigh;
+        internal static double declination; // PHD2 will use declination to convert pixels to arcseconds
+        internal static double guideRate; // arcsec/s. The motor does not really guide at this rate but we will report this to PHD2 and then translate PulseGuide times back to arcsec and send corrections to motor controller.
 
         /// <summary>
         /// Private variable to hold the connected state
@@ -265,8 +261,8 @@ namespace ASCOM.MyMinEq
         {
             get
             {
-                tl.LogMessage("RightAscension", "Get - " + utilities.HoursToHMS(rightAscension));
-                return rightAscension;
+                tl.LogMessage("RightAscension", "Get - " + utilities.HoursToHMS(0));
+                return 0;
             }
         }
 
@@ -297,7 +293,7 @@ namespace ASCOM.MyMinEq
         {
             get
             {
-                double rate = siderealRate / 2;
+                double rate = guideRate / 60 / 60;
                 tl.LogMessage("GuideRateRightAscension Get", $"{rate}");
                 return rate;
             }
@@ -333,8 +329,12 @@ namespace ASCOM.MyMinEq
             tl.LogMessage("PulseGuide", $"{Direction} {Duration}");
             if (Direction == GuideDirections.guideEast || Direction == GuideDirections.guideWest)
             {
-                var pwm = Direction == GuideDirections.guideEast ? pwmLow : pwmHigh;
-                serial.Transmit($"o {pwm} {Duration}\r\n");
+                var arcsecs = guideRate * Duration / 1000;
+                if (Direction == GuideDirections.guideEast)
+                {
+                    arcsecs = -arcsecs;
+                }
+                serial.Transmit($"m {arcsecs.ToString("F4", CultureInfo.InvariantCulture)}\r\n");
                 var ackStopwatch = new Stopwatch();
                 ackStopwatch.Start();
                 bool isAck = false;
@@ -1036,10 +1036,8 @@ namespace ASCOM.MyMinEq
                 driverProfile.DeviceType = "Telescope";
                 tl.Enabled = Convert.ToBoolean(driverProfile.GetValue(driverID, traceStateProfileName, string.Empty, traceStateDefault));
                 comPort = driverProfile.GetValue(driverID, comPortProfileName, string.Empty, comPortDefault);
-                rightAscension = utilities.HMSToHours(driverProfile.GetValue(driverID, rightAsensionProfileName, string.Empty, rightAscensionDefault));
-                declination = utilities.DMSToDegrees(driverProfile.GetValue(driverID, declinationProfileName, string.Empty, rightAscensionDefault));
-                pwmLow = int.Parse(driverProfile.GetValue(driverID, pwmLowProfileName, string.Empty, pwmLowDefault));
-                pwmHigh = int.Parse(driverProfile.GetValue(driverID, pwmHighProfileName, string.Empty, pwmHighDefault));
+                declination = double.Parse(driverProfile.GetValue(driverID, declinationProfileName, string.Empty, declinationDefault), CultureInfo.InvariantCulture);
+                guideRate = double.Parse(driverProfile.GetValue(driverID, guideRateProfileName, string.Empty, guideRateDefault), CultureInfo.InvariantCulture);
             }
         }
 
@@ -1053,10 +1051,9 @@ namespace ASCOM.MyMinEq
                 driverProfile.DeviceType = "Telescope";
                 driverProfile.WriteValue(driverID, traceStateProfileName, tl.Enabled.ToString());
                 driverProfile.WriteValue(driverID, comPortProfileName, comPort.ToString());
-                driverProfile.WriteValue(driverID, rightAsensionProfileName, utilities.HoursToHMS(rightAscension));
-                driverProfile.WriteValue(driverID, declinationProfileName, utilities.DegreesToDMS(declination));
-                driverProfile.WriteValue(driverID, pwmLowProfileName, pwmLow.ToString());
-                driverProfile.WriteValue(driverID, pwmHighProfileName, pwmHigh.ToString());
+                driverProfile.WriteValue(driverID, declinationProfileName, declination.ToString("F4", CultureInfo.InvariantCulture));
+                driverProfile.WriteValue(driverID, guideRateProfileName, guideRate.ToString("F4", CultureInfo.InvariantCulture));
+
             }
         }
 
